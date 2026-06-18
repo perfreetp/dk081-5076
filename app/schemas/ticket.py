@@ -145,6 +145,42 @@ class TicketEvaluationInfo(BaseModel):
     evaluate_time: datetime
     is_duplicate: bool
     is_original: bool
+    role: str = "original"
+    citizen_name: Optional[str] = None
+    citizen_phone: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MergedEvaluationSummary(BaseModel):
+    original_evaluation: Optional[TicketEvaluationInfo] = None
+    merged_evaluations: List[TicketEvaluationInfo] = []
+    total_count: int = 0
+    source_channels: List[str] = []
+    first_time: Optional[datetime] = None
+    last_time: Optional[datetime] = None
+    timeline: List[TicketEvaluationInfo] = []
+
+
+class TicketAssignmentHistory(BaseModel):
+    id: int
+    from_dept_code: Optional[str]
+    from_dept_name: Optional[str]
+    to_dept_code: str
+    to_dept_name: str
+    to_dept_type: str
+    to_user: Optional[str]
+    assign_reason: Optional[str]
+    assign_time: datetime
+    deadline: Optional[datetime]
+    dispatch_path: Optional[str]
+    dispatch_path_desc: Optional[str]
+    is_accepted: bool
+    accept_time: Optional[datetime]
+    is_rejected: bool
+    reject_reason: Optional[str]
+    reject_time: Optional[datetime]
 
     class Config:
         from_attributes = True
@@ -171,7 +207,12 @@ class TicketDetailResponse(TicketResponse):
     assigned_user: Optional[str]
     first_reminder_time: Optional[datetime]
     last_reminder_time: Optional[datetime]
+    dispatch_path: Optional[str] = None
+    dispatch_path_desc: Optional[str] = None
+    latest_assignment: Optional[TicketAssignmentHistory] = None
+    assignment_history: Optional[List[TicketAssignmentHistory]] = None
     related_evaluations: Optional[List[TicketEvaluationInfo]] = None
+    merged_summary: Optional[MergedEvaluationSummary] = None
     operation_trail: Optional[List[TicketOperationLog]] = None
 
 

@@ -119,6 +119,7 @@ class CollectionService:
                     assignment_dict["to_dept_type"] = latest_assignment.to_dept_type
                     dispatch_path = latest_assignment.dispatch_path
                     assignment_dict["dispatch_path"] = dispatch_path
+                    assignment_dict["dispatch_path_desc"] = DispatchService.get_dispatch_path_desc(dispatch_path)
                     ticket_dict["latest_assignment"] = assignment_dict
                 else:
                     ticket_dict["latest_assignment"] = None
@@ -132,6 +133,7 @@ class CollectionService:
                         dispatch_path = auto_log.operation_detail.get("dispatch_path")
 
                 ticket_dict["dispatch_path"] = dispatch_path
+                ticket_dict["dispatch_path_desc"] = DispatchService.get_dispatch_path_desc(dispatch_path)
 
                 result["ticket_info"] = ticket_dict
             else:

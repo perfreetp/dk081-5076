@@ -17,7 +17,7 @@ except ImportError:
         logging.getLogger(__name__).warning("APScheduler未安装，定时任务功能不可用")
     def stop_scheduler():
         pass
-from app.api import evaluations, tickets, analysis, archives
+from app.api import evaluations, tickets, analysis, archives, dispatch_rules
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,7 +30,10 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-Base.metadata.create_all(bind=engine)
+from app.core.migration import ensure_schema
+_migration_summary = ensure_schema()
+if _migration_summary["added"]:
+    logger.info(f"数据库自动迁移完成，新增列：{_migration_summary['added']}")
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -125,6 +128,7 @@ app.include_router(evaluations.router)
 app.include_router(tickets.router)
 app.include_router(analysis.router)
 app.include_router(archives.router)
+app.include_router(dispatch_rules.router)
 
 
 if __name__ == "__main__":

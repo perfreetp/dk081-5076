@@ -10,6 +10,7 @@ from app.schemas.ticket import (
 )
 from app.services.trail_service import TrailService
 from app.services.archive_service import ArchiveService
+from app.services.dispatch_service import DispatchService
 
 
 class TicketService:
@@ -35,15 +36,67 @@ class TicketService:
         result["urgency_level"] = ticket.urgency_level
         result["assigned_dept_type"] = ticket.assigned_dept_type
 
+        assignments = self.db.query(Assignment).filter(
+            Assignment.ticket_id == ticket.id
+        ).order_by(Assignment.assign_time.asc()).all()
+
+        assignment_history = []
+        latest_assignment = None
+        for a in assignments:
+            item = {
+                "id": a.id,
+                "from_dept_code": a.from_dept_code,
+                "from_dept_name": a.from_dept_name,
+                "to_dept_code": a.to_dept_code,
+                "to_dept_name": a.to_dept_name,
+                "to_dept_type": a.to_dept_type,
+                "to_user": a.to_user,
+                "assign_reason": a.assign_reason,
+                "assign_time": a.assign_time,
+                "deadline": a.deadline,
+                "dispatch_path": a.dispatch_path,
+                "dispatch_path_desc": DispatchService.get_dispatch_path_desc(a.dispatch_path),
+                "is_accepted": a.is_accepted,
+                "accept_time": a.accept_time,
+                "is_rejected": a.is_rejected,
+                "reject_reason": a.reject_reason,
+                "reject_time": a.reject_time,
+            }
+            assignment_history.append(item)
+            latest_assignment = item
+
+        result["assignment_history"] = assignment_history
+        result["latest_assignment"] = latest_assignment
+
+        if latest_assignment and latest_assignment.get("dispatch_path"):
+            result["dispatch_path"] = latest_assignment.get("dispatch_path")
+            result["dispatch_path_desc"] = latest_assignment.get("dispatch_path_desc")
+        else:
+            auto_log = self.db.query(OperationLog).filter(
+                OperationLog.ticket_id == ticket.id,
+                OperationLog.operation_type == "auto_dispatched"
+            ).order_by(OperationLog.operation_time.desc()).first()
+            dispatch_path = None
+            if auto_log and auto_log.operation_detail:
+                dispatch_path = auto_log.operation_detail.get("dispatch_path")
+            result["dispatch_path"] = dispatch_path
+            result["dispatch_path_desc"] = DispatchService.get_dispatch_path_desc(dispatch_path)
+
         evaluations = self.db.query(Evaluation).filter(
             Evaluation.ticket_id == ticket.id
         ).order_by(Evaluation.evaluate_time.asc()).all()
 
         duplicate_target_ids = set(e.duplicate_of for e in evaluations if e.is_duplicate and e.duplicate_of)
-        result["related_evaluations"] = []
+        eval_infos = []
         for e in evaluations:
             is_original = (not e.is_duplicate) or (e.id in duplicate_target_ids)
-            result["related_evaluations"].append({
+            if is_original and not e.is_duplicate:
+                role = "original"
+            elif e.is_duplicate:
+                role = "merged"
+            else:
+                role = "original"
+            eval_infos.append({
                 "id": e.id,
                 "evaluation_no": e.evaluation_no,
                 "source": e.source,
@@ -52,8 +105,28 @@ class TicketService:
                 "content": e.content,
                 "evaluate_time": e.evaluate_time,
                 "is_duplicate": e.is_duplicate,
-                "is_original": is_original
+                "is_original": is_original,
+                "role": role,
+                "citizen_name": e.citizen_name,
+                "citizen_phone": e.citizen_phone
             })
+
+        result["related_evaluations"] = eval_infos
+
+        original_list = [e for e in eval_infos if e["is_original"]]
+        merged_list = [e for e in eval_infos if e["is_duplicate"]]
+        source_channels = sorted(set(e["source_desc"] for e in eval_infos))
+        all_times = [e["evaluate_time"] for e in eval_infos]
+
+        result["merged_summary"] = {
+            "original_evaluation": original_list[0] if original_list else None,
+            "merged_evaluations": merged_list,
+            "total_count": len(eval_infos),
+            "source_channels": source_channels,
+            "first_time": min(all_times) if all_times else None,
+            "last_time": max(all_times) if all_times else None,
+            "timeline": eval_infos
+        }
 
         operation_logs = self.db.query(OperationLog).filter(
             OperationLog.ticket_id == ticket.id

@@ -78,6 +78,7 @@ class TicketAssignmentInfo(BaseModel):
     deadline: Optional[datetime]
     assign_reason: Optional[str] = None
     dispatch_path: Optional[str] = None
+    dispatch_path_desc: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -94,6 +95,7 @@ class EvaluationTicketInfo(BaseModel):
     assigned_dept_type: Optional[str]
     deadline_time: Optional[datetime]
     dispatch_path: Optional[str] = None
+    dispatch_path_desc: Optional[str] = None
     latest_assignment: Optional[TicketAssignmentInfo] = None
 
     class Config:

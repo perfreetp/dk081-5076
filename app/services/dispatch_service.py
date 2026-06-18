@@ -15,6 +15,22 @@ logger = logging.getLogger(__name__)
 
 
 class DispatchService:
+    DISPATCH_PATH_DESC = {
+        "item_mapping_by_code": "按事项编码命中事项映射",
+        "item_mapping_by_name": "按事项名称精确命中事项映射",
+        "item_mapping_by_keyword": "按事项名称关键词命中事项映射",
+        "dept_name_match": "按事项名称命中责任部门",
+        "problem_type": "按问题类型兜底分派",
+        "dept_code_match": "按评价部门编码分派",
+        "default_supervision": "兜底至营商环境督查室",
+    }
+
+    @classmethod
+    def get_dispatch_path_desc(cls, path: Optional[str]) -> Optional[str]:
+        if not path:
+            return None
+        return cls.DISPATCH_PATH_DESC.get(path, path)
+
     def __init__(self, db: Session):
         self.db = db
         self.trail_service = TrailService(db)
