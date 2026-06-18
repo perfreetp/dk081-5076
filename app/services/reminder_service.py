@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 import logging
 
-from app.core.models import Ticket, Reminder, Department
+from app.core.models import Ticket, Reminder, Department, Assignment
 from app.core.enums import (
     ReminderType, TicketStatus, UrgencyLevel
 )
@@ -37,7 +37,6 @@ class ReminderService:
 
         tickets = self.db.query(Ticket).filter(
             Ticket.status == TicketStatus.ASSIGNED,
-            Ticket.created_at <= accept_timeout,
             or_(
                 Ticket.first_reminder_time.is_(None),
                 and_(
@@ -47,11 +46,23 @@ class ReminderService:
         ).all()
 
         for ticket in tickets:
+            latest_assignment = self.db.query(Assignment).filter(
+                Assignment.ticket_id == ticket.id
+            ).order_by(Assignment.assign_time.desc()).first()
+
+            if not latest_assignment:
+                continue
+
+            if latest_assignment.assign_time > accept_timeout:
+                continue
+
+            hours_since_assign = (datetime.now() - latest_assignment.assign_time).total_seconds() / 3600
+
             reminder = self._create_reminder(
                 ticket,
                 ReminderType.ACCEPT_TIMEOUT,
                 "接单超时催办",
-                f"您有一个工单已超过{settings.SUPERVISE_TIMEOUT_HOURS}小时未接单，请尽快处理。"
+                f"您有一个工单已于{latest_assignment.assign_time.strftime('%Y-%m-%d %H:%M')}分派，已超过{settings.SUPERVISE_TIMEOUT_HOURS}小时未接单，距分派已{hours_since_assign:.1f}小时，请尽快处理。"
             )
             if reminder:
                 reminders.append(reminder)
@@ -127,25 +138,32 @@ class ReminderService:
                 TicketStatus.ACCEPTED,
                 TicketStatus.PROCESSING
             ]),
-            Ticket.is_escalated == False,
-            or_(
-                and_(
-                    Ticket.urgency_level == UrgencyLevel.URGENT,
-                    Ticket.created_at <= urgent_escalation_time
-                ),
-                and_(
-                    Ticket.urgency_level.in_([UrgencyLevel.MAJOR, UrgencyLevel.SENSITIVE]),
-                    Ticket.created_at <= major_escalation_time
-                )
-            )
+            Ticket.is_escalated == False
         ).all()
 
         for ticket in tickets:
+            latest_assignment = self.db.query(Assignment).filter(
+                Assignment.ticket_id == ticket.id
+            ).order_by(Assignment.assign_time.desc()).first()
+
+            base_time = latest_assignment.assign_time if latest_assignment else ticket.created_at
+
+            should_escalate = False
+            if ticket.urgency_level == UrgencyLevel.URGENT and base_time <= urgent_escalation_time:
+                should_escalate = True
+            elif ticket.urgency_level in [UrgencyLevel.MAJOR, UrgencyLevel.SENSITIVE] and base_time <= major_escalation_time:
+                should_escalate = True
+
+            if not should_escalate:
+                continue
+
+            hours_since_assign = (datetime.now() - base_time).total_seconds() / 3600
+
             reminder = self._create_reminder(
                 ticket,
                 ReminderType.ESCALATION,
                 "升级报送",
-                f"该工单为{UrgencyLevel.get_description(ticket.urgency_level)}级别，已超时未处理，现升级报送至营商环境督查室。",
+                f"该工单为{UrgencyLevel.get_description(ticket.urgency_level)}级别，于{base_time.strftime('%Y-%m-%d %H:%M')}分派，已{hours_since_assign:.1f}小时未处理，现升级报送至营商环境督查室。",
                 is_escalation=True,
                 escalated_to="营商环境督查室"
             )
@@ -165,7 +183,9 @@ class ReminderService:
                     operator="system",
                     detail={
                         "reason": ticket.escalation_reason,
-                        "urgency_level": ticket.urgency_level
+                        "urgency_level": ticket.urgency_level,
+                        "base_time": base_time.isoformat(),
+                        "hours_since_assign": hours_since_assign
                     }
                 )
 

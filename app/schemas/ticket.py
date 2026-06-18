@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
-from app.core.enums import TicketStatus, ProblemType, UrgencyLevel, DepartmentType
+from app.core.enums import TicketStatus, ProblemType, UrgencyLevel, DepartmentType, DataSource
 
 
 class TicketCreate(BaseModel):
@@ -135,6 +135,34 @@ class TicketResponse(BaseModel):
         from_attributes = True
 
 
+class TicketEvaluationInfo(BaseModel):
+    id: int
+    evaluation_no: str
+    source: str
+    source_desc: str
+    level: str
+    content: Optional[str]
+    evaluate_time: datetime
+    is_duplicate: bool
+    is_original: bool
+
+    class Config:
+        from_attributes = True
+
+
+class TicketOperationLog(BaseModel):
+    id: int
+    operation_type: str
+    operation_desc: str
+    operation_detail: Optional[Dict[str, Any]]
+    operator: str
+    operator_dept: Optional[str]
+    operation_time: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class TicketDetailResponse(TicketResponse):
     handle_measure: Optional[str]
     escalation_reason: Optional[str]
@@ -143,6 +171,8 @@ class TicketDetailResponse(TicketResponse):
     assigned_user: Optional[str]
     first_reminder_time: Optional[datetime]
     last_reminder_time: Optional[datetime]
+    related_evaluations: Optional[List[TicketEvaluationInfo]] = None
+    operation_trail: Optional[List[TicketOperationLog]] = None
 
 
 class TicketQuery(BaseModel):

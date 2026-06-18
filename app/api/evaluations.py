@@ -19,7 +19,8 @@ router = APIRouter(prefix="/api/evaluations", tags=["评价归集"])
 def receive_evaluation(data: EvaluationCreate, db: Session = Depends(get_db)):
     service = CollectionService(db)
     evaluation = service.receive_evaluation(data)
-    return ApiResponse.success(data=evaluation)
+    detail = service.get_evaluation_with_detail(evaluation.id)
+    return ApiResponse.success(data=detail)
 
 
 @router.post("/receive/batch", response_model=ApiResponse[list])
@@ -32,10 +33,10 @@ def receive_batch_evaluations(data: EvaluationBatchCreate, db: Session = Depends
 @router.get("/{evaluation_id}", response_model=ApiResponse[EvaluationDetailResponse])
 def get_evaluation(evaluation_id: int, db: Session = Depends(get_db)):
     service = CollectionService(db)
-    evaluation = service.get_evaluation(evaluation_id)
-    if not evaluation:
+    detail = service.get_evaluation_with_detail(evaluation_id)
+    if not detail:
         raise HTTPException(status_code=404, detail="评价数据不存在")
-    return ApiResponse.success(data=evaluation)
+    return ApiResponse.success(data=detail)
 
 
 @router.get("/no/{evaluation_no}", response_model=ApiResponse[EvaluationDetailResponse])
@@ -44,7 +45,8 @@ def get_evaluation_by_no(evaluation_no: str, db: Session = Depends(get_db)):
     evaluation = service.get_evaluation_by_no(evaluation_no)
     if not evaluation:
         raise HTTPException(status_code=404, detail="评价数据不存在")
-    return ApiResponse.success(data=evaluation)
+    detail = service.get_evaluation_with_detail(evaluation.id)
+    return ApiResponse.success(data=detail)
 
 
 @router.get("", response_model=ApiResponse[PageResult[EvaluationResponse]])

@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 import uuid
 
-from app.core.models import Evaluation, Ticket, OperationLog
+from app.core.models import Evaluation, Ticket, OperationLog, Assignment
 from app.core.enums import (
     DataSource, EvaluationLevel, TicketStatus,
     UrgencyLevel, ProblemType
@@ -88,6 +88,58 @@ class CollectionService:
         self.db.commit()
         self.db.refresh(evaluation)
         return evaluation
+
+    def get_evaluation_with_detail(self, evaluation_id: int) -> Optional[Dict[str, Any]]:
+        evaluation = self.get_evaluation(evaluation_id)
+        if not evaluation:
+            return None
+
+        result = {c.name: getattr(evaluation, c.name) for c in evaluation.__table__.columns}
+        result["source"] = evaluation.source
+        result["level"] = evaluation.level
+        result["problem_type"] = evaluation.problem_type
+        result["urgency_level"] = evaluation.urgency_level
+
+        if evaluation.ticket_id:
+            ticket = self.db.query(Ticket).filter(Ticket.id == evaluation.ticket_id).first()
+            if ticket:
+                latest_assignment = self.db.query(Assignment).filter(
+                    Assignment.ticket_id == ticket.id
+                ).order_by(Assignment.assign_time.desc()).first()
+
+                ticket_dict = {c.name: getattr(ticket, c.name) for c in ticket.__table__.columns}
+                ticket_dict["status"] = ticket.status
+                ticket_dict["problem_type"] = ticket.problem_type
+                ticket_dict["urgency_level"] = ticket.urgency_level
+                ticket_dict["assigned_dept_type"] = ticket.assigned_dept_type
+
+                if latest_assignment:
+                    assignment_dict = {c.name: getattr(latest_assignment, c.name) for c in latest_assignment.__table__.columns}
+                    assignment_dict["to_dept_type"] = latest_assignment.to_dept_type
+                    ticket_dict["latest_assignment"] = assignment_dict
+                else:
+                    ticket_dict["latest_assignment"] = None
+
+                result["ticket_info"] = ticket_dict
+            else:
+                result["ticket_info"] = None
+        else:
+            result["ticket_info"] = None
+
+        duplicate_evals = self.get_duplicate_evaluations(evaluation.id)
+        result["duplicate_evaluations"] = [
+            {
+                "id": e.id,
+                "evaluation_no": e.evaluation_no,
+                "source": e.source,
+                "source_desc": DataSource.get_description(e.source),
+                "content": e.content,
+                "evaluate_time": e.evaluate_time
+            }
+            for e in duplicate_evals
+        ]
+
+        return result
 
     def receive_batch_evaluations(self, data: EvaluationBatchCreate, operator: str = "system") -> List[Evaluation]:
         results = []

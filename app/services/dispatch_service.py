@@ -9,6 +9,7 @@ from app.core.enums import (
 )
 from app.config.settings import settings
 from app.schemas.ticket import TicketAssign
+from app.services.trail_service import TrailService
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 class DispatchService:
     def __init__(self, db: Session):
         self.db = db
+        self.trail_service = TrailService(db)
 
     def auto_dispatch(self, ticket: Ticket) -> Optional[Assignment]:
         dept_code = None
@@ -100,6 +102,25 @@ class DispatchService:
         ticket.assigned_user = data.assign_user
         ticket.status = TicketStatus.ASSIGNED
         ticket.deadline_time = deadline
+        ticket.first_reminder_time = None
+        ticket.last_reminder_time = None
+        ticket.reminder_count = 0
+
+        self.db.flush()
+
+        self.trail_service.log_ticket_operation(
+            ticket_id=ticket.id,
+            operation_type="manual_dispatched",
+            operation_desc=f"人工分派至{data.dept_name}",
+            operator=operator,
+            detail={
+                "dept_code": data.dept_code,
+                "dept_name": data.dept_name,
+                "assign_user": data.assign_user,
+                "assign_reason": data.assign_reason,
+                "deadline": deadline.isoformat() if deadline else None
+            }
+        )
 
         self.db.commit()
 
@@ -122,6 +143,17 @@ class DispatchService:
 
         ticket.status = TicketStatus.ACCEPTED
         ticket.accept_time = datetime.now()
+
+        self.trail_service.log_ticket_operation(
+            ticket_id=ticket_id,
+            operation_type="ticket_accepted",
+            operation_desc=f"工单已接单",
+            operator=accept_user,
+            detail={
+                "accept_user": accept_user,
+                "accept_time": datetime.now().isoformat()
+            }
+        )
 
         self.db.commit()
         return True
@@ -146,6 +178,18 @@ class DispatchService:
         ticket.assigned_dept_name = None
         ticket.assigned_dept_type = None
         ticket.assigned_user = None
+
+        self.trail_service.log_ticket_operation(
+            ticket_id=ticket_id,
+            operation_type="ticket_rejected",
+            operation_desc=f"工单被拒收",
+            operator=reject_user,
+            detail={
+                "reject_user": reject_user,
+                "reject_reason": reject_reason,
+                "reject_time": datetime.now().isoformat()
+            }
+        )
 
         self.db.commit()
         return True
@@ -180,6 +224,25 @@ class DispatchService:
         ticket.status = TicketStatus.ASSIGNED
         ticket.deadline_time = deadline
         ticket.accept_time = None
+        ticket.first_reminder_time = None
+        ticket.last_reminder_time = None
+        ticket.reminder_count = 0
+
+        self.db.flush()
+
+        self.trail_service.log_ticket_operation(
+            ticket_id=ticket_id,
+            operation_type="ticket_transferred",
+            operation_desc=f"工单转派至{new_dept_name}",
+            operator=operator,
+            detail={
+                "from_dept_code": ticket.assigned_dept_code,
+                "to_dept_code": new_dept_code,
+                "to_dept_name": new_dept_name,
+                "transfer_reason": reason,
+                "deadline": deadline.isoformat() if deadline else None
+            }
+        )
 
         self.db.commit()
         return True

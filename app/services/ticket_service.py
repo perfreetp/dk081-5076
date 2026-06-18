@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from datetime import datetime, timedelta
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
-from app.core.models import Ticket, Evaluation
-from app.core.enums import TicketStatus
+from app.core.models import Ticket, Evaluation, Assignment, OperationLog
+from app.core.enums import TicketStatus, DataSource
 from app.schemas.ticket import (
     TicketProcess, TicketFeedback, TicketReview, TicketComplete, TicketQuery
 )
@@ -23,6 +23,62 @@ class TicketService:
 
     def get_ticket_by_no(self, ticket_no: str) -> Optional[Ticket]:
         return self.db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+
+    def get_ticket_with_detail(self, ticket_id: int) -> Optional[Dict[str, Any]]:
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return None
+
+        result = {c.name: getattr(ticket, c.name) for c in ticket.__table__.columns}
+        result["status"] = ticket.status
+        result["problem_type"] = ticket.problem_type
+        result["urgency_level"] = ticket.urgency_level
+        result["assigned_dept_type"] = ticket.assigned_dept_type
+
+        evaluations = self.db.query(Evaluation).filter(
+            Evaluation.ticket_id == ticket.id
+        ).order_by(Evaluation.evaluate_time.asc()).all()
+
+        duplicate_target_ids = set(e.duplicate_of for e in evaluations if e.is_duplicate and e.duplicate_of)
+        result["related_evaluations"] = []
+        for e in evaluations:
+            is_original = (not e.is_duplicate) or (e.id in duplicate_target_ids)
+            result["related_evaluations"].append({
+                "id": e.id,
+                "evaluation_no": e.evaluation_no,
+                "source": e.source,
+                "source_desc": DataSource.get_description(e.source),
+                "level": e.level,
+                "content": e.content,
+                "evaluate_time": e.evaluate_time,
+                "is_duplicate": e.is_duplicate,
+                "is_original": is_original
+            })
+
+        operation_logs = self.db.query(OperationLog).filter(
+            OperationLog.ticket_id == ticket.id
+        ).order_by(OperationLog.operation_time.asc()).all()
+
+        result["operation_trail"] = [
+            {
+                "id": log.id,
+                "operation_type": log.operation_type,
+                "operation_desc": log.operation_desc,
+                "operation_detail": log.operation_detail,
+                "operator": log.operator,
+                "operator_dept": log.operator_dept,
+                "operation_time": log.operation_time
+            }
+            for log in operation_logs
+        ]
+
+        return result
+
+    def get_ticket_by_no_with_detail(self, ticket_no: str) -> Optional[Dict[str, Any]]:
+        ticket = self.get_ticket_by_no(ticket_no)
+        if not ticket:
+            return None
+        return self.get_ticket_with_detail(ticket.id)
 
     def process_ticket(self, data: TicketProcess, operator: str) -> bool:
         ticket = self.get_ticket(data.ticket_id)

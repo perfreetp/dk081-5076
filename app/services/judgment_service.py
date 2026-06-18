@@ -77,16 +77,23 @@ class JudgmentService:
             Evaluation.is_duplicate == False
         )
 
-        conditions = []
+        citizen_conditions = []
         if evaluation.citizen_phone:
-            conditions.append(Evaluation.citizen_phone == evaluation.citizen_phone)
+            citizen_conditions.append(Evaluation.citizen_phone == evaluation.citizen_phone)
         if evaluation.citizen_id_card:
-            conditions.append(Evaluation.citizen_id_card == evaluation.citizen_id_card)
-        if conditions:
-            q = q.filter(or_(*conditions))
+            citizen_conditions.append(Evaluation.citizen_id_card == evaluation.citizen_id_card)
+        if citizen_conditions:
+            q = q.filter(or_(*citizen_conditions))
 
+        item_conditions = []
         if evaluation.item_code:
-            q = q.filter(Evaluation.item_code == evaluation.item_code)
+            item_conditions.append(Evaluation.item_code == evaluation.item_code)
+        if evaluation.item_name:
+            item_conditions.append(Evaluation.item_name == evaluation.item_name)
+        if item_conditions:
+            q = q.filter(or_(*item_conditions))
+        else:
+            return False, None
 
         similar = q.first()
 

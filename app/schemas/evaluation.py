@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
-from app.core.enums import DataSource, EvaluationLevel, ProblemType, UrgencyLevel
+from app.core.enums import DataSource, EvaluationLevel, ProblemType, UrgencyLevel, TicketStatus
 
 
 class EvaluationCreate(BaseModel):
@@ -68,6 +68,34 @@ class EvaluationResponse(BaseModel):
         from_attributes = True
 
 
+class TicketAssignmentInfo(BaseModel):
+    id: int
+    to_dept_code: str
+    to_dept_name: str
+    to_dept_type: str
+    to_user: Optional[str]
+    assign_time: datetime
+    deadline: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class EvaluationTicketInfo(BaseModel):
+    id: int
+    ticket_no: str
+    status: str
+    problem_type: str
+    urgency_level: str
+    assigned_dept_code: Optional[str]
+    assigned_dept_name: Optional[str]
+    deadline_time: Optional[datetime]
+    latest_assignment: Optional[TicketAssignmentInfo]
+
+    class Config:
+        from_attributes = True
+
+
 class EvaluationDetailResponse(EvaluationResponse):
     content: Optional[str]
     suggestion: Optional[str]
@@ -77,6 +105,8 @@ class EvaluationDetailResponse(EvaluationResponse):
     citizen_id_card: Optional[str]
     duplicate_of: Optional[int]
     updated_at: datetime
+    ticket_info: Optional[EvaluationTicketInfo] = None
+    duplicate_evaluations: Optional[List[dict]] = None
 
 
 class EvaluationQuery(BaseModel):

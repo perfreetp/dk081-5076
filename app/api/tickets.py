@@ -25,19 +25,19 @@ router = APIRouter(prefix="/api/tickets", tags=["工单管理"])
 @router.get("/{ticket_id}", response_model=ApiResponse[TicketDetailResponse])
 def get_ticket(ticket_id: int, db: Session = Depends(get_db)):
     service = TicketService(db)
-    ticket = service.get_ticket(ticket_id)
-    if not ticket:
+    detail = service.get_ticket_with_detail(ticket_id)
+    if not detail:
         raise HTTPException(status_code=404, detail="工单不存在")
-    return ApiResponse.success(data=ticket)
+    return ApiResponse.success(data=detail)
 
 
 @router.get("/no/{ticket_no}", response_model=ApiResponse[TicketDetailResponse])
 def get_ticket_by_no(ticket_no: str, db: Session = Depends(get_db)):
     service = TicketService(db)
-    ticket = service.get_ticket_by_no(ticket_no)
-    if not ticket:
+    detail = service.get_ticket_by_no_with_detail(ticket_no)
+    if not detail:
         raise HTTPException(status_code=404, detail="工单不存在")
-    return ApiResponse.success(data=ticket)
+    return ApiResponse.success(data=detail)
 
 
 @router.get("/status/{ticket_no}", response_model=ApiResponse[TicketStatusResponse])
