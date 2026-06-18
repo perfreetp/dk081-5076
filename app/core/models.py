@@ -70,6 +70,9 @@ class Ticket(Base):
     item_name = Column(String(255))
     item_category = Column(String(64))
 
+    dept_code = Column(String(64))
+    dept_name = Column(String(255))
+
     summary = Column(Text)
     content = Column(Text)
 
@@ -133,6 +136,7 @@ class Assignment(Base):
     assign_reason = Column(Text)
     assign_time = Column(DateTime, default=datetime.now)
     deadline = Column(DateTime)
+    dispatch_path = Column(String(64))
 
     is_accepted = Column(Boolean, default=False)
     accept_time = Column(DateTime, nullable=True)

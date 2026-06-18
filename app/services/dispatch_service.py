@@ -23,6 +23,8 @@ class DispatchService:
         dept_code = None
         dept_name = None
         dept_type = None
+        dispatch_path = "default_supervision"
+        match_detail = ""
 
         mapping = None
         if ticket.item_code:
@@ -30,16 +32,46 @@ class DispatchService:
                 ItemMapping.item_code == ticket.item_code,
                 ItemMapping.is_active == True
             ).first()
+            if mapping:
+                dispatch_path = "item_mapping_by_code"
+                match_detail = f"事项编码[{ticket.item_code}]命中事项映射"
+
+        if not mapping and ticket.item_name:
+            mapping = self.db.query(ItemMapping).filter(
+                ItemMapping.item_name == ticket.item_name,
+                ItemMapping.is_active == True
+            ).first()
+            if mapping:
+                dispatch_path = "item_mapping_by_name"
+                match_detail = f"事项名称[{ticket.item_name}]精确命中事项映射"
+
+        if not mapping and ticket.item_name:
+            keyword_match = self._match_item_mapping_by_keywords(ticket.item_name)
+            if keyword_match:
+                mapping = keyword_match
+                dispatch_path = "item_mapping_by_keyword"
+                match_detail = f"事项名称[{ticket.item_name}]关键词命中事项映射[{mapping.item_name}]"
 
         if mapping:
             dept_code = mapping.primary_dept_code
             dept_name = mapping.primary_dept_name
             dept_type = mapping.primary_dept_type
-        elif ticket.problem_type:
+        elif ticket.item_name:
+            dept_match = self._match_dept_by_item_name(ticket.item_name)
+            if dept_match:
+                dept_code, dept_name, dept_type = dept_match
+                dispatch_path = "dept_name_match"
+                match_detail = f"事项名称[{ticket.item_name}]命中部门[{dept_name}]"
+
+        if not dept_code and ticket.problem_type:
             dept_code, dept_name, dept_type = self._get_dept_by_problem_type(
                 ticket.problem_type, ticket.dept_code
             )
-        elif ticket.dept_code:
+            if dispatch_path == "default_supervision":
+                dispatch_path = "problem_type"
+                match_detail = f"按问题类型[{ProblemType.get_description(ticket.problem_type)}]兜底分派"
+
+        if not dept_code and ticket.dept_code:
             dept = self.db.query(Department).filter(
                 Department.dept_code == ticket.dept_code,
                 Department.is_active == True
@@ -48,15 +80,21 @@ class DispatchService:
                 dept_code = dept.dept_code
                 dept_name = dept.dept_name
                 dept_type = dept.dept_type
+                if dispatch_path == "default_supervision":
+                    dispatch_path = "dept_code_match"
+                    match_detail = f"按评价部门编码[{ticket.dept_code}]分派"
 
         if not dept_code:
             dept_code = "SUP001"
             dept_name = "营商环境督查室"
             dept_type = DepartmentType.SUPERVISION
+            if dispatch_path == "default_supervision":
+                match_detail = "无任何匹配项，兜底至营商环境督查室"
 
         timeout_hours = self._get_timeout_by_urgency(ticket.urgency_level)
         deadline = datetime.now() + timedelta(hours=timeout_hours)
 
+        problem_desc = ProblemType.get_description(ticket.problem_type) if ticket.problem_type else "未分类"
         assignment = Assignment(
             ticket_id=ticket.id,
             from_dept_code="SUP001",
@@ -65,12 +103,67 @@ class DispatchService:
             to_dept_code=dept_code,
             to_dept_name=dept_name,
             to_dept_type=dept_type,
-            assign_reason=f"自动分派：{ProblemType.get_description(ticket.problem_type)}问题",
+            assign_reason=f"自动分派（{dispatch_path}）：{problem_desc}问题；{match_detail}",
             assign_time=datetime.now(),
-            deadline=deadline
+            deadline=deadline,
+            dispatch_path=dispatch_path
         )
 
         return assignment
+
+    def _match_item_mapping_by_keywords(self, item_name: str) -> Optional[ItemMapping]:
+        if not item_name:
+            return None
+
+        name_clean = item_name.strip()
+        mappings = self.db.query(ItemMapping).filter(
+            ItemMapping.is_active == True
+        ).all()
+
+        exact = [m for m in mappings if m.item_name and m.item_name == name_clean]
+        if exact:
+            return exact[0]
+
+        contains = [m for m in mappings if m.item_name and (m.item_name in name_clean or name_clean in m.item_name)]
+        if contains:
+            return contains[0]
+
+        for m in mappings:
+            keywords = m.keywords or []
+            for kw in keywords:
+                if kw and kw in name_clean:
+                    return m
+
+        return None
+
+    def _match_dept_by_item_name(self, item_name: str):
+        if not item_name:
+            return None
+
+        name_clean = item_name.strip()
+        depts = self.db.query(Department).filter(
+            Department.is_active == True
+        ).all()
+
+        for dept in depts:
+            if dept.dept_name and dept.dept_name in name_clean:
+                return dept.dept_code, dept.dept_name, dept.dept_type
+
+        keyword_to_dept = [
+            (("不动产", "房产", "过户"), "不动产"),
+            (("营业执照", "工商", "注册", "注销", "变更"), "市场"),
+            (("纳税", "税务", "申报", "发票"), "税务"),
+            (("身份证", "户籍"), "户籍"),
+            (("系统", "网络", "登录"), "信息"),
+        ]
+
+        for keywords, hint in keyword_to_dept:
+            if any(kw in name_clean for kw in keywords):
+                for dept in depts:
+                    if dept.dept_name and hint in dept.dept_name:
+                        return dept.dept_code, dept.dept_name, dept.dept_type
+
+        return None
 
     def manual_dispatch(self, data: TicketAssign, operator: str) -> Optional[Assignment]:
         ticket = self.db.query(Ticket).filter(Ticket.id == data.ticket_id).first()

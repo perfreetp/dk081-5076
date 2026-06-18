@@ -113,12 +113,25 @@ class CollectionService:
                 ticket_dict["urgency_level"] = ticket.urgency_level
                 ticket_dict["assigned_dept_type"] = ticket.assigned_dept_type
 
+                dispatch_path = None
                 if latest_assignment:
                     assignment_dict = {c.name: getattr(latest_assignment, c.name) for c in latest_assignment.__table__.columns}
                     assignment_dict["to_dept_type"] = latest_assignment.to_dept_type
+                    dispatch_path = latest_assignment.dispatch_path
+                    assignment_dict["dispatch_path"] = dispatch_path
                     ticket_dict["latest_assignment"] = assignment_dict
                 else:
                     ticket_dict["latest_assignment"] = None
+
+                if dispatch_path is None:
+                    auto_log = self.db.query(OperationLog).filter(
+                        OperationLog.ticket_id == ticket.id,
+                        OperationLog.operation_type == "auto_dispatched"
+                    ).order_by(OperationLog.operation_time.desc()).first()
+                    if auto_log and auto_log.operation_detail:
+                        dispatch_path = auto_log.operation_detail.get("dispatch_path")
+
+                ticket_dict["dispatch_path"] = dispatch_path
 
                 result["ticket_info"] = ticket_dict
             else:
@@ -180,6 +193,8 @@ class CollectionService:
             item_code=ticket_data.item_code,
             item_name=ticket_data.item_name,
             item_category=ticket_data.item_category,
+            dept_code=evaluation.dept_code,
+            dept_name=evaluation.dept_name,
             summary=ticket_data.summary,
             content=ticket_data.content
         )
@@ -212,7 +227,13 @@ class CollectionService:
                 operation_type="auto_dispatched",
                 operation_desc=f"自动分派至{dispatch_result.to_dept_name}",
                 operator=operator,
-                detail={"dept_code": dispatch_result.to_dept_code, "deadline": dispatch_result.deadline.isoformat() if dispatch_result.deadline else None}
+                detail={
+                    "dept_code": dispatch_result.to_dept_code,
+                    "dept_name": dispatch_result.to_dept_name,
+                    "deadline": dispatch_result.deadline.isoformat() if dispatch_result.deadline else None,
+                    "dispatch_path": dispatch_result.dispatch_path,
+                    "assign_reason": dispatch_result.assign_reason
+                }
             )
 
         if self.judgment_service.is_major_sensitive(evaluation):
